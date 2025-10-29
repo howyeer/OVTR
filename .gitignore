@@ -4,6 +4,7 @@ __pycache__/
 # ---- 日志与缓存 ----
 *.log
 *.tmp
+*.txt
 
 # ---- 数据与输出 ----
 data/
@@ -17,7 +18,7 @@ ovtr/data_vis/
 *.pt
 *.ckpt
 *.onnx
-*.txt
+*.json
 
 # ---- IDE 配置 ----
 .vscode/

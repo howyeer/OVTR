@@ -37,7 +37,8 @@ use_text_cross_attention = True
 embed_init_tgt = True
 extra_track_attn = True
 use_checkpoint_track = False
-use_checkpoint_track = True
+# use_checkpoint_track = True
+attention_protection = True
 
 computed_aux = [0, 1, 2, 3, 4, 5]
 
@@ -183,14 +184,16 @@ data = dict(
         type=dataset_type,
         classes='../data/lvis_classes_v1.txt',
         ann_file='../data/tao_test_burst_v1.json',
-        img_prefix='../data/TAO/',
+        # img_prefix='../data/TAO/',
+        img_prefix='/data/fzm_2022/Datasets/TAO/frames',
         ref_img_sampler=None,
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         classes='../data/lvis_classes_v1.txt',
         ann_file='../data/tao_test_burst_v1.json',
-        img_prefix='../data/TAO/',
+        # img_prefix='../data/TAO/',
+        img_prefix='/data/fzm_2022/Datasets/TAO/frames',
         ref_img_sampler=None,
         pipeline=test_pipeline)
 )

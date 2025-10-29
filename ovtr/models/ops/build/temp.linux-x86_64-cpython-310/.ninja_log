@@ -1,0 +1,4 @@
+# ninja log v5
+0	4943	1758020216081190176	/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/build/temp.linux-x86_64-cpython-310/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/src/cpu/ms_deform_attn_cpu.o	86d388c5a79ebbb4
+0	16229	1758020227373193207	/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/build/temp.linux-x86_64-cpython-310/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/src/cuda/ms_deform_attn_cuda.o	6977e94f560a4182
+1	16593	1758020227737193304	/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/build/temp.linux-x86_64-cpython-310/home/hhy_2023/aaaacode/OVTR/ovtr/models/ops/src/vision.o	33306a2739364680

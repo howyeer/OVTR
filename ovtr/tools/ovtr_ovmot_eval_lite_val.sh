@@ -1,4 +1,4 @@
-CUDA_DEVICES="0"
+CUDA_DEVICES="2"
 MASTER_PORT=9986
 NPROC_GPU=1
 PRETRAIN_MODEL="../model_zoo/ovtr_lite.pth"

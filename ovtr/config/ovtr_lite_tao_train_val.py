@@ -37,7 +37,7 @@ use_text_cross_attention = True
 embed_init_tgt = True
 extra_track_attn = True
 use_checkpoint_track = False
-attention_protection = True
+attention_protection = False
 
 computed_aux = [0, 1, 2, 3, 4, 5]
 
@@ -115,69 +115,7 @@ data = dict(
     persistent_workers=True,
     train=dict(
                 type=dataset_type,
-                classes='../data/lvis_classes_v1.txt',
-                load_as_video=True,
-                ann_file='../data/lvis_clear_75_60.json',
-                key_img_sampler=dict(interval=1),
-                ref_img_sampler=dict(num_ref_imgs=1, scope=1, method='uniform', pesudo=True),
-                pipeline=[
-                    dict(
-                        type='LoadMultiImagesFromFile',
-                        file_client_args=dict(
-                            img_db_path='../data/lvis_filtered_train_images.h5',
-                            backend='hdf5',
-                            type='lvis'),
-                        ),
-                    dict(type='SeqLoadAnnotations', with_bbox=True, with_ins_id=True),],
-                    
-                train_pipeline = [
-                    dict(type='DynamicMosaic', 
-                         img_scale = (400, 666), # Increasing Mosaic img_scale will increase CPU overhead
-                         pad_val=114.0, 
-                         shuffle_ratio=0.1,
-                         dislocation_ratio=0.25,
-                         single_ratio_range=(0.7, 1.2)),
-                    dict(type='RandomOcclusion',
-                         n_holes=20,
-                         cutout_ratio=(0.6, 0.2),
-                         fill_in=[(90, 100, 110), (110, 90, 75) ,(100, 85, 110),
-                                (90, 120, 100), (90, 75, 110) ,(100, 120, 95)],
-                         holes_area=25000,
-                         occlusion_ratio=(0.1, 0.13),
-                         ),
-                    dict(type='SeqRandomFlip',
-                         share_params=False, 
-                         flip_ratio=0.5,
-                         deny_ratio=0.4), # Increasing can reduce the flipping probability.
-                    dict(
-                        type='SeqRandomAffine',
-                        scaling_ratio_range=(0.5, 1.4),
-                        scaling_ratio_range_Mosaic=(0.6, 1.6),
-                        max_translate=(0.1, 0.25, 0.4, 0.55),
-                        max_rotate_degree=12.0,
-                        max_shear_degree=5.0
-                        ),
-                    dict(type='SeqYOLOXHSVRandomAug'),
-                    dict(
-                        type='SeqResize',
-                        img_scale=[(1333, 640), (1333, 672), (1333, 704), (1333, 736), (1333, 768), (1333, 800)],
-                        share_params=True,
-                        multiscale_mode='value',
-                        keep_ratio=True),
-                    dict(type='SeqNormalize', **img_norm_cfg),
-                    dict(
-                        type='SeqPad',
-                        size_divisor=32,
-                        # If the image is three-channel, the pad value needs
-                        # to be set separately for each channel
-                        ),
-                    dict(type='SeqFilterAnnotations', min_gt_bbox_wh=(1, 1), keep_empty=False),
-                    dict(type='SeqDefaultFormatBundle'),
-                    dict(
-                        type='SeqCollect',
-                        keys=['img', 'gt_bboxes', 'gt_labels', 'gt_match_indices'],
-                        ref_prefix='ref'),
-                    ],
+                root_path='/data/fzm_2022/Datasets/TAO/',
                 ),
     val=dict(
         type=dataset_type,

@@ -382,7 +382,7 @@ class OVFrameMatcher(SetCriterion):
 
         def match_for_single_decoder_layer(unmatched_outputs, matcher, unmatched_track_idxes):
             new_track_indices = matcher(unmatched_outputs,
-                                             [unmatched_gt_instances])
+                                             [unmatched_gt_instances])   # list[tuple(src_idx, tgt_idx)]
 
             # map the matched pair indexes to original index-space.
             src_idx = new_track_indices[0][0]
@@ -981,7 +981,8 @@ def build(args, cfg):
                                     'frame_{}_aux{}_loss_align'.format(i, j): args.align_loss_coef,
                                     })
 
-    losses = ['labels', 'boxes', 'align']
+    # losses = ['labels', 'boxes', 'align']
+    losses = ['labels', 'boxes']
 
     criterion = OVFrameMatcher(None, matcher=matcher, weight_dict=weight_dict, losses=losses, random_drop=args.random_drop,
                                 train_with_artificial_img_seqs=cfg.train_with_artificial_img_seqs,

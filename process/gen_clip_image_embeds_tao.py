@@ -3,26 +3,26 @@ from PIL import Image
 import numpy as np
 
 from lvis import LVIS
+
 import random
 import operator
 
 import os
 import clip
+from tao.toolkit.tao import Tao
 
-# json_file = './data/lvis_v1/annotations/lvis_v1_train.json'
-# img_root = './data/lvis_v1'
-json_file = '/data/fzm_2022/Datasets/LVIS/annotations/lvis_v1_train.json'
-img_root = '/data/fzm_2022/Datasets/LVIS/source_file/train2017/'
-# save_region = './regions'
+json_file = '/data/fzm_2022/Datasets/TAO/annotations/train_ours_v1.json'
+img_root = '/data/fzm_2022/Datasets/TAO/frames/'
+save_region = './regions'
 region_ratio = 1.2
 image_embedding_save_path = './model_zoo/'
 test_num = 1203
-# sample_num = [20, 50, 100, 200]
-sample_num = [50, 200, 500, 1000]
+sample_num = [20, 60, 200]
+# sample_num = [50, 200, 500, 1000]
 
 class Make_image_embedding():
     def __init__(self):
-        anno = LVIS(json_file)
+        anno = Tao(json_file)
         self.cat2img = anno.cat_img_map
         self.img_map = anno.img_ann_map
         self.imgs = anno.imgs
@@ -40,25 +40,31 @@ class Make_image_embedding():
         cat2img = self.cat2img
 
         # for category in cat2img:
-        for cat_id in range(len(cat2img)):
+        for cat_id in range(test_num):
             category = cat_id+1
             self.preprocessed_category = []
 
-            if len(cat2img[category]) <sample_num[0]:
+            if len(cat2img[category]) == 0:
+                print(f"category {category} has no image.")
+                zero_tensor = torch.zeros(3,224,224).to(self.device)
+                self.preprocessed_category.append(zero_tensor)
+            elif len(cat2img[category]) <sample_num[0]:
                 sample_index = list(range(len(cat2img[category])))
-            elif len(cat2img[category]) < 200:
+                self.load_img_from_map(sample_index, cat2img[category], category)
+            elif len(cat2img[category]) < 80:
                 sample_index = random.sample(range(len(cat2img[category])),sample_num[0])
                 sample_index.sort()
-            elif len(cat2img[category]) < 1000:
+                self.load_img_from_map(sample_index, cat2img[category], category)
+            elif len(cat2img[category]) < 320:
                 sample_index = random.sample(range(len(cat2img[category])),sample_num[1])
                 sample_index.sort()
-            elif len(cat2img[category]) < 6000:
+                self.load_img_from_map(sample_index, cat2img[category], category)
+            else:
                 sample_index = random.sample(range(len(cat2img[category])),sample_num[2])
                 sample_index.sort()
-            else:
-                sample_index = random.sample(range(len(cat2img[category])),sample_num[3])
-                sample_index.sort()
-            self.load_img_from_map(sample_index, cat2img[category], category)
+                self.load_img_from_map(sample_index, cat2img[category], category)
+
+            
             
             # torch.cuda.empty_cache()
             if len(self.preprocessed_category) == 0:
@@ -102,7 +108,7 @@ class Make_image_embedding():
                     break 
 
     def get_image_region(self, boxs, image_id, category_id, region_id_list):
-        img_path = img_root + self.imgs[image_id]['coco_url'].replace('http://images.cocodataset.org', '')
+        img_path = img_root + self.imgs[image_id]['file_name']
         img = Image.open(img_path)
         image_np = np.array(img)
         img = Image.fromarray(image_np)
@@ -135,7 +141,7 @@ class Make_image_embedding():
     def gather_embedding(self):
         clip_image_embedding = torch.cat(self.feature_all, dim=0)
         print(clip_image_embedding.shape)
-        torch.save(clip_image_embedding,os.path.join(image_embedding_save_path,'clip_image_embeddings_all1.pt'))
+        torch.save(clip_image_embedding,os.path.join(image_embedding_save_path,'clip_image_embedding_tao.pt'))
 
 
 if __name__ == "__main__":

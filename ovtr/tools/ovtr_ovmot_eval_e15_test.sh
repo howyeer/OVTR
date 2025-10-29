@@ -8,7 +8,7 @@ RESULT_PATH="./results/teta_results_5_frame_test"
 CUDA_VISIBLE_DEVICES="${CUDA_DEVICES}" python -m torch.distributed.launch --master_port=${MASTER_PORT} --nproc_per_node=${NPROC_GPU} \
     --use_env \
     ./eval.py \
-    --config_file ./config/ovtr_5_frame_test.py \
+    --config_file ./config/ovtr_lite_test.py \
     --dataset_file lvis_generated_img_seqs \
     --epochs 16 \
     --with_box_refine \
@@ -33,6 +33,6 @@ CUDA_VISIBLE_DEVICES="${CUDA_DEVICES}" python -m torch.distributed.launch --mast
     --filter_score_thresh 0.20 0.17 0.17 0.20 0.17 0.20 0.17 \
     --ious_thresh 0.5 0.45 0.5 0.4 0.45 0.45 0.45 \
     --miss_tolerance 5 5 5 5 5 5 5 \
-    --maximum_quantity 180 \
+    --maximum_quantity 160 \
     --result_path_track ${RESULT_PATH} \
     --vis_output ${VIS_OUTPUT}

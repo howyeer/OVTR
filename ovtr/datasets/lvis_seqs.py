@@ -179,7 +179,7 @@ class LVIS_seqs_Dataset(TaoDataset):
                     results.pop('mix_results')
 
                 # if transform_type == 'SeqResize':
-                    # self.visualize(results)
+                #  self.visualize(results)
 
             if isinstance(results, dict): # Check if the object is empty.
                 data_flag = True

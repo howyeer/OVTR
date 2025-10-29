@@ -101,7 +101,7 @@ def get_args_parser():
                         help='start epoch')
     # parser.add_argument('--eval', action='store_true')
     parser.add_argument('--vis', action='store_true')
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--num_workers', default=0, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', 
                         help='whether to cache images on memory')
 
@@ -157,6 +157,9 @@ def get_args_parser():
     parser.add_argument('--eval', default=['track'], type=str, nargs='+')
     parser.add_argument('--eval_options', type=json.loads, default='{"resfile_path": "results/ovtrack_teta_results/"}')
     parser.add_argument('--result_path_track', default=None, type=str)
+    parser.add_argument('--train_base', default=True, type=bool)
+    parser.add_argument('--pseudo_det', default='../data/TAO_Co-DETR_train_01.json', type=str)
+    parser.add_argument('--use_extra_pseudo', default=False, action='store_true')
     return parser
 
 
@@ -200,7 +203,8 @@ def main(args):
         sampler_train, args.batch_size, drop_last=True)
     
     datasets2collate_fn = {
-        'lvis_generated_img_seqs': utils.mot_collate_fn
+        'lvis_generated_img_seqs': utils.mot_collate_fn,
+        'tao_seqs': utils.mot_collate_fn
     }
     collate_fn = datasets2collate_fn[args.dataset_file]
     data_loader_train = DataLoader(dataset_train, batch_sampler=batch_sampler_train,

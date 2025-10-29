@@ -3,6 +3,7 @@ import torch.utils.data
 
 from .torchvision_datasets import CocoDetection
 from .lvis_seqs import build as build_lvis_generated_mot
+from .tao_seqs import build as build_tao_seqs
 
 from mmdet.datasets.builder import DATASETS, PIPELINES
 from .builder import build_dataloader, build_dataset
@@ -45,4 +46,6 @@ def get_coco_api_from_dataset(dataset):
 def build_dataset(image_set, args, cfg):
     if args.dataset_file == 'lvis_generated_img_seqs':
         return build_lvis_generated_mot(image_set, args, cfg)
+    if args.dataset_file == 'tao_seqs':
+        return build_tao_seqs(image_set, args, cfg)
     raise ValueError(f'dataset {args.dataset_file} not supported')

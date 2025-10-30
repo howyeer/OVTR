@@ -159,7 +159,7 @@ def get_args_parser():
     parser.add_argument('--result_path_track', default=None, type=str)
     parser.add_argument('--train_base', default=True, type=bool)
     parser.add_argument('--pseudo_det', default='../data/TAO_Co-DETR_train_01.json', type=str)
-    parser.add_argument('--use_extra_pseudo', default=False, action='store_true')
+    parser.add_argument('--train_with_pseudo', default=False, action='store_true')
     return parser
 
 

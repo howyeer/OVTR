@@ -78,8 +78,15 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
 
         # Bounded retries to avoid infinite resampling loop
         self.max_resample_attempts = getattr(args_mot, 'max_resample_attempts', 10)
-        self.use_extra_pseudo = getattr(args_mot, 'use_extra_pseudo', False)
+        self.train_with_pseudo = getattr(args_mot, 'train_with_pseudo', False)
         self.max_det = getattr(args_mot, 'max_det', None)
+        # configurable match threshold(s): float => same=diff=float; tuple/list(len=2) => (same, diff); dict => {'same':..,'diff':..}
+        thr_cfg = getattr(args_mot, 'pseudo_match_thr', [0.6, 0.75])
+        if isinstance(thr_cfg, list) and len(thr_cfg) == 2:
+            self.pseudo_match_thr_same, self.pseudo_match_thr_diff = float(thr_cfg[0]), float(thr_cfg[1])
+        else:
+            raise TypeError("pseudo_match_thr mast be list")
+
         self.all_frames_with_gt, self.all_indices, categories_counter = self._generate_train_imgs(vid_img_map, img_ann_map, cats, vids, pseudo_det,
                                                                                                                  args_mot.train_base)
         categories_counter = sorted(categories_counter.items(), key=lambda x: x[0])
@@ -173,6 +180,8 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
                 if len(pseudo_list) > 0 and len(gt_boxes) > 0:
                     pseudo_boxes_xyxy, pseudo_labels, pseudo_tids, pseudo_scores = [], [], [], []
                     for pann in pseudo_list:
+                        if base_only and cats[pann['category_id']]['frequency'] == 'r':  # ignore rare classes
+                            continue
                         bbox = pann['bbox']
                         if bbox is None:
                             continue
@@ -190,11 +199,25 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
                         pseudo_boxes_t = torch.as_tensor(pseudo_boxes_xyxy, dtype=torch.float32)
                         gt_boxes_t_for_match = torch.as_tensor(gt_boxes, dtype=torch.float32)
                         ious = _iou_matrix(pseudo_boxes_t, gt_boxes_t_for_match)
-                        max_iou = ious.max(dim=1)[0] if ious.numel() > 0 else torch.zeros((0,), dtype=torch.float32)
-                        for i, val in enumerate(max_iou.tolist()):
-                            if val <= 0.8 and self.use_extra_pseudo:
+                        gt_labels_arr = torch.as_tensor(gt_labels, dtype=torch.long)
+                        # per pseudo row, decide matched by same/diff-class thresholds
+                        for i in range(len(pseudo_boxes_xyxy)):
+                            p_label = pseudo_labels[i]
+                            if ious.numel() == 0:
+                                matched = False
+                            else:
+                                same_mask = (gt_labels_arr == p_label)
+                                diff_mask = ~same_mask
+                                matched_same = False
+                                matched_diff = False
+                                if same_mask.any():
+                                    matched_same = bool((ious[i][same_mask] > self.pseudo_match_thr_same).any().item())
+                                if diff_mask.any():
+                                    matched_diff = bool((ious[i][diff_mask] > self.pseudo_match_thr_diff).any().item())
+                                matched = matched_same or matched_diff
+                            if (not matched) and self.train_with_pseudo:
                                 extra_boxes.append(pseudo_boxes_xyxy[i])
-                                extra_labels.append(pseudo_labels[i])
+                                extra_labels.append(p_label)
                                 extra_track_ids.append(pseudo_tids[i])
                                 extra_scores.append(pseudo_scores[i])
 
@@ -204,7 +227,7 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
                 gt_iscrowd_t = torch.as_tensor(gt_iscrowd, dtype=torch.bool)
                 gt_scores_t = torch.ones((len(gt_boxes_t),), dtype=torch.float32)
 
-                if self.use_extra_pseudo and len(extra_boxes) > 0:
+                if self.train_with_pseudo and len(extra_boxes) > 0:
                     extra_boxes_t = torch.as_tensor(extra_boxes, dtype=torch.float32)
                     extra_labels_t = torch.as_tensor(extra_labels, dtype=torch.long)
                     extra_track_ids_t = torch.as_tensor(extra_track_ids, dtype=torch.float32)
@@ -386,8 +409,8 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
 
             ori_images = [Image.open(os.path.join(self.root, 'frames', img_info['file_name']))
                     for img_info in img_infos]
-            for t, img_info, img in zip(targets, img_infos, ori_images):
-                self.visualize(t, img_info, img)
+            # for t, img_info, img in zip(targets, img_infos, ori_images):
+            #     self.visualize(t, img_info, img)
             if self.transform is not None:
                 images, targets = self.transform(ori_images, targets)
             else:
@@ -404,164 +427,27 @@ class Tao_seqs_Dataset(Dataset):  # TAO dataset
             gt_instances.update({'filename': filename})
             return gt_instances
 
-        # # Fallback: deterministic safe sample from current video
-        # vid, img_id = self.all_indices[idx]
-        # filename = self.all_frames_with_gt[vid]['filename']
-        # tmax = len(self.all_frames_with_gt[vid]['img_infos'])
-        # n = self.num_frames_per_batch
-        # base_indices = list(range(min(n, tmax)))
-        # while len(base_indices) < n and tmax > 0:
-        #     base_indices.append(base_indices[-1])
-        # img_infos = [self.all_frames_with_gt[vid]['img_infos'][i] for i in base_indices]
-        # targets = [self.all_frames_with_gt[vid]['targets'][i] for i in base_indices]
-        # ori_images = [Image.open(os.path.join(self.root, 'frames', img_info['file_name'])) for img_info in img_infos]
-        # if self.transform is not None:
-        #     images, targets = self.transform(ori_images, targets)
-        # else:
-        #     raise ValueError('transform is None')
-        # gt_instances = self.results_to_instances(images, targets)
-        # gt_instances.update({'filename': filename})
-        # return gt_instances
-
-
-class Tao_seqs_Dataset_val(TaoDataset):
-    def __init__(self,
-        args_mot_mot = None,
-        load_as_video=True,
-        match_gts=True,
-        skip_nomatch_pairs=True,
-        key_img_sampler=dict(interval=1),
-        ref_img_sampler=dict(scope=3, num_ref_imgs=1, method="uniform"),
-        *args_mot,
-        **kwargs_mot,):
-
-        super(LVIS_seqs_Dataset_val, self).__init__(load_as_video=True,
-            match_gts=True,
-            skip_nomatch_pairs=True,
-            key_img_sampler=key_img_sampler,
-            ref_img_sampler=ref_img_sampler,
-            *args_mot,
-            **kwargs_mot,)
-        
-        self.CLASSES = CLASSES
-        self.num_frames_per_batch = max(args_mot_mot.sampler_lengths)
-        self.sample_mode = args_mot_mot.sample_mode
-        self.sample_interval = args_mot_mot.sample_interval
-        self.video_dict = {}
-        self.item_num = None
-
-        if args_mot_mot.filter_ignore:
-            print('Training with ignore.', flush=True)
-
-        self.item_num = len(self) - (self.num_frames_per_batch - 1) * self.sample_interval
-
-        # video sampler.
-        self.sampler_steps: list = args_mot_mot.sampler_steps
-        self.lengths: list = args_mot_mot.sampler_lengths
-        print("sampler_steps={} lenghts={}".format(self.sampler_steps, self.lengths))
-
-        self.num_samples = len(self)
-        self._skip_type_keys = None
-
-    def set_epoch(self, epoch):
-        self.current_epoch = epoch
-        if self.sampler_steps is None or len(self.sampler_steps) == 0:
-            # fixed sampling length.
-            return
-
-        for i in range(len(self.sampler_steps)):
-            if epoch >= self.sampler_steps[i]:
-                self.period_idx = i + 1
-        print("set epoch: epoch {} period_idx={}".format(epoch, self.period_idx))
-        self.num_frames_per_batch = self.lengths[self.period_idx]
-
-    def step_epoch(self):
-        # one epoch finishes.
-        print("Dataset: epoch {} finishes".format(self.current_epoch))
-        self.set_epoch(self.current_epoch + 1)
-
-    def pre_continuous_frames(self, start, end, interval=1):
-        targets = []
-        images = []
-        for i in range(start, end, interval):
-            img_i, targets_i = self._pre_single_frame(i)
-            images.append(img_i)
-            targets.append(targets_i)
-        return images, targets
-
-    def __getitem__(self, idx):
-        results, ann_info = self.prepare_test_img(idx)
-        frame_id = self.data_infos[idx]['frame_id']
-        gt_instances = self.results_to_instances(results, frame_id, ann_info)
-        return gt_instances
-        
-    def results_to_instances(self, results, frame_id, ann_info):
-        img_shape_without_pad = results['img_metas'][0].data['pad_shape']
-        ori_img_shape = results['img_metas'][0].data['ori_shape']
-        gt_instance = Instances(img_shape_without_pad[:2])
-        image = results['img'][0]
-        gt_instance.labels = torch.as_tensor(ann_info['labels'], device=image.device)
-        data={
-            'imgs': [image],
-            'gt_instances': [gt_instance],
-            'info':[[frame_id, ori_img_shape]],
-            'file_path':[ann_info['file_path']]
-        }
-        return data
-    
-    def prepare_test_img(self, idx):
-        """Get testing data after pipeline.
-
-        args_mot:
-            idx (int): Index of data.
-
-        Returns:
-            dict: Testing data after pipeline with new keys introduced by \
-                pipeline.
-        """
-
-        img_info = self.data_infos[idx]
-        ann_info = self.get_ann_info(img_info)
-        ann_info.update({'file_path':img_info['file_name']})
-        results = dict(img_info=img_info)
-        self.pre_pipeline(results)
-        return self.pipeline(results), ann_info
-    
-    def ref_img_sampling(
-        self, img_info, scope, num_ref_imgs=1, method="uniform", pesudo=False
-    ):
-        if num_ref_imgs != 1 or method != "uniform":
-            raise NotImplementedError
-        if img_info.get("frame_id", -1) < 0 or scope <= 0:
-            ref_img_info = img_info.copy()
+        # Fallback: deterministic safe sample from current video
+        vid, img_id = self.all_indices[idx]
+        filename = self.all_frames_with_gt[vid]['filename']
+        tmax = len(self.all_frames_with_gt[vid]['img_infos'])
+        n = self.num_frames_per_batch
+        base_indices = list(range(min(n, tmax)))
+        while len(base_indices) < n and tmax > 0:
+            base_indices.append(base_indices[-1])
+        img_infos = [self.all_frames_with_gt[vid]['img_infos'][i] for i in base_indices]
+        targets = [self.all_frames_with_gt[vid]['targets'][i] for i in base_indices]
+        ori_images = [Image.open(os.path.join(self.root, 'frames', img_info['file_name'])) for img_info in img_infos]
+        if self.transform is not None:
+            images, targets = self.transform(ori_images, targets)
         else:
-            vid_id = img_info["video_id"]
-            img_ids = self.coco.get_img_ids_from_vid(vid_id)
-            frame_id = img_info["frame_id"]
-            if method == "uniform":
-                left = max(0, frame_id - scope)
-                right = min(frame_id + scope, len(img_ids) - 1)
-                if pesudo:
-                    valid_inds = img_ids[left : right + 1]
-                else:
-                    if len(img_ids) == 1:
-                        valid_inds = img_ids[left : right + 1]
-                    else:
-                        valid_inds = (
-                            img_ids[left:frame_id] + img_ids[frame_id + 1 : right + 1]
-                        )
-                ref_img_id = random.choice(valid_inds)
-            ref_img_info = self.coco.loadImgs([ref_img_id])[0]
-            ref_img_info["filename"] = ref_img_info["file_name"]
-        return ref_img_info
-    
-    def prepare_results(self, img_info):
-        ann_info = self.get_ann_info(img_info)
-        results = dict(img_info=img_info, ann_info=ann_info)
-        if self.proposals is not None:
-            idx = self.img_ids.index(img_info["id"])
-            results["proposals"] = self.proposals[idx]
-        return results
+            raise ValueError('transform is None')
+        gt_instances = self.results_to_instances(images, targets)
+        gt_instances.update({'filename': filename})
+        return gt_instances
+
+
+
 
 
 def build(image_set, args_mot, cfg):

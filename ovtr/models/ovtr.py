@@ -132,6 +132,7 @@ class OVFrameMatcher(SetCriterion):
                         calculate_negative_samples=True,
                         num_queries=900,
                         train_with_artificial_img_seqs=False,
+                        train_with_pseudo=False,
                         ):
         """ Create the criterion.
         Parameters:
@@ -154,6 +155,7 @@ class OVFrameMatcher(SetCriterion):
         self.num_queries = num_queries
         self.calculate_negative_samples = calculate_negative_samples
         self.train_with_artificial_img_seqs = train_with_artificial_img_seqs
+        self.train_with_pseudo = train_with_pseudo
 
     def initialize(self, gt_instances: List[Instances]):
         self.gt_instances = gt_instances
@@ -187,6 +189,7 @@ class OVFrameMatcher(SetCriterion):
         targets dicts must contain the key "labels" containing a tensor of dim [nb_target_boxes]
         """
         src_logits = outputs['pred_logits']
+        weights_bq = None
 
         def get_src_permutation_idx(indices):
             batch_idx = torch.cat([torch.full_like(src[filt != -1], i) for i, (src, filt) in enumerate(indices)])
@@ -206,6 +209,12 @@ class OVFrameMatcher(SetCriterion):
         labels_ori = torch.cat([t.labels[J[J != -1]] for t, (_, J) in zip(gt_instances, indices)])
         tgt_ids_all = torch.cat([(select_id == lid).nonzero(as_tuple=False)[0] for lid in labels_ori])
         target_classes[idx] = tgt_ids_all
+        if self.train_with_pseudo:
+            # gather scores for matched targets
+            labels_scores = torch.cat([t.scores[J[J != -1]] for t, (_, J) in zip(gt_instances, indices)])
+            weights_bq = torch.ones(src_logits.shape[:2], dtype=src_logits.dtype, device=src_logits.device)
+            # idx selects positives (batch_idx, src_idx)
+            weights_bq[idx] = labels_scores.to(weights_bq)
       
         if self.focal_loss:                                                                    
             gt_labels_target = F.one_hot(target_classes, num_classes=num_class + 1)[:, :,
@@ -215,7 +224,7 @@ class OVFrameMatcher(SetCriterion):
                                              gt_labels_target,
                                              alpha=0.25,
                                              gamma=2,
-                                             num_boxes=num_boxes, mean_in_dim1=True)* src_logits.shape[1]
+                                             num_boxes=num_boxes, mean_in_dim1=True, weights=weights_bq) * src_logits.shape[1]
         else:
             loss_ce = F.cross_entropy(src_logits[:, :, num_class].transpose(1, 2), target_classes, self.empty_weight)
         losses = {'loss_ce': loss_ce}
@@ -245,9 +254,21 @@ class OVFrameMatcher(SetCriterion):
             box_ops.box_cxcywh_to_xyxy(src_boxes[mask]),
             box_ops.box_cxcywh_to_xyxy(target_boxes[mask])))
 
+        # Optional weighting by gt scores
+        use_weight = False
+        weights = None
+        if self.train_with_pseudo:
+            target_scores = torch.cat([gt_per_img.scores[i] for gt_per_img, (_, i) in zip(gt_instances, indices)], dim=0)
+            weights = target_scores[mask].to(loss_bbox)
+            use_weight = weights.numel() > 0
+
         losses = {}
-        losses['loss_bbox'] = loss_bbox.sum() / num_boxes
-        losses['loss_giou'] = loss_giou.sum() / num_boxes
+        if use_weight:
+            losses['loss_bbox'] = (loss_bbox.sum(-1) * weights).sum() / num_boxes
+            losses['loss_giou'] = (loss_giou * weights).sum() / num_boxes
+        else:
+            losses['loss_bbox'] = loss_bbox.sum() / num_boxes
+            losses['loss_giou'] = loss_giou.sum() / num_boxes
 
         return losses
     
@@ -337,6 +358,7 @@ class OVFrameMatcher(SetCriterion):
             track_instances = track_instances_last[keep_indices]
         else:
             track_instances = track_instances_last
+            keep_indices = torch.ones(len(track_instances_last), dtype=torch.bool, device=track_instances_last.obj_idxes.device)
 
         outputs_i = {
             'pred_logits': track_instances.pred_logits.unsqueeze(0),
@@ -436,10 +458,11 @@ class OVFrameMatcher(SetCriterion):
                 # Shield and match individually for each layer.
                 if self.train_with_artificial_img_seqs:
                     _shielded_ids_layer = protect_det_preds(aux_outputs, num_queries=self.num_queries)
-                    _keep_indices_layer = torch.ones(len(track_instances_last), dtype=torch.bool, device=shielded_ids.device)
+                    _keep_indices_layer = torch.ones(len(track_instances_last), dtype=torch.bool, device=_shielded_ids_layer.device)
                     _keep_indices_layer[_shielded_ids_layer] = False
                     track_instances_layer = track_instances_last[_keep_indices_layer]
                 else:
+                    _keep_indices_layer = torch.ones(len(track_instances_last), dtype=torch.bool, device=track_instances_last.obj_idxes.device)
                     track_instances_layer = track_instances_last
 
                 # step1*. inherit and update the previous tracks.
@@ -988,6 +1011,7 @@ def build(args, cfg):
                                 train_with_artificial_img_seqs=cfg.train_with_artificial_img_seqs,
                                 calculate_negative_samples=args.calculate_negative_samples,
                                 num_queries=cfg.num_queries,
+                                train_with_pseudo=args.train_with_pseudo,
                                 )
     criterion.to(device)
 

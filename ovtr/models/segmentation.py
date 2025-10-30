@@ -193,7 +193,7 @@ def dice_loss(inputs, targets, num_boxes):
     return loss.sum() / num_boxes
 
 
-def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2, mean_in_dim1=True):
+def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: float = 2, mean_in_dim1=True, weights=None):
     """
     Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
     Args:
@@ -217,10 +217,21 @@ def sigmoid_focal_loss(inputs, targets, num_boxes, alpha: float = 0.25, gamma: f
     if alpha >= 0:
         alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
         loss = alpha_t * loss
-    if mean_in_dim1:
-        return loss.mean(1).sum() / num_boxes
+
+    # Optional per-query weighting: weights expected shape [B, Q]
+    if weights is not None:
+        # Reduce over class dimension, keep per (B, Q)
+        per_query_loss = loss.mean(-1)
+        # Broadcast/check weights shape
+        assert weights.shape == per_query_loss.shape
+        weighted = per_query_loss * weights
+        denom = torch.clamp(weights.sum(), min=1.0)
+        return weighted.sum() / denom
     else:
-        return loss.sum() / num_boxes
+        if mean_in_dim1:
+            return loss.mean(1).sum() / num_boxes
+        else:
+            return loss.sum() / num_boxes
 
 
 class PostProcessSegm(nn.Module):
